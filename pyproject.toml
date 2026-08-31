@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "meteortrace"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reproducible geometry and astrometry tools for meteors photographed with consumer cameras."
 authors = ["Victor Barna"]
 license = "MIT"
@@ -12,6 +12,8 @@ packages = [{ include = "meteortrace", from = "src" }]
 python = "^3.12"
 numpy = "^2.0"
 astropy = "^7.0"
+pillow = "^10.4"
+pillow-heif = "^0.18"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3"
@@ -19,6 +21,9 @@ pytest-cov = "^5.0"
 black = "^24.8"
 ruff = "^0.6"
 pre-commit = "^3.8"
+
+[tool.poetry.scripts]
+meteortrace = "meteortrace.cli:main"
 
 [build-system]
 requires = ["poetry-core"]

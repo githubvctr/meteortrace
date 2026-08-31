@@ -14,6 +14,27 @@ does not contain original meteor imagery or private observation files.
   explicitly cleared for release) may be committed outside `private/` and
   `raw/`.
 
+Within `data/private/`, a single observation session typically contains
+several distinct roles that must not be conflated:
+
+- **Fireball target image** — the photograph actually containing the
+  meteor. This is the image the trajectory must ultimately be extracted
+  from.
+- **Astrometric reference image** — a separate photograph (e.g. taken
+  immediately before or after the target, from a fixed tripod) that was
+  submitted to a plate-solving service to obtain a WCS solution. Temporal
+  or positional proximity to the target does not imply pixel alignment.
+- **Derived Astrometry.net products** — the WCS/FITS solution itself, plus
+  any diagnostic/annotated images the solver produced. These describe the
+  *reference* image's pixel grid, not necessarily the target's.
+- **Other session images** — anything else captured around the same time
+  that is not directly used in the trajectory calculation.
+
+Every separately pointed or time-separated image generally requires its
+own WCS solution, or a measured registration against an image that has
+one. A shared timestamp, camera, or lens does not establish shared pixel
+geometry; see [docs/input_provenance_and_wcs.md](../docs/input_provenance_and_wcs.md).
+
 ## Provenance
 
 No private file should ever be committed just to make an example runnable.
