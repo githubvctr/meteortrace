@@ -8,15 +8,19 @@ astrometry, trajectory, and shower-radiant comparison.
 
 **Early development.** The spherical-geometry foundation is implemented
 and tested, alongside an auditable input-provenance, image-orientation
-and WCS-ingestion layer. For one real observation session, the ingested
-WCS solution's pixel grid is transposed relative to the astrometric
-reference image's own decoded grid — a candidate rotation, not a
-validated one — so the reference-grid relationship is not yet
-established. Transferring the WCS to the separately captured fireball
-image requires either a measured registration or an independent WCS
-solved directly on that image. No real fireball trajectory has been
-produced yet: end-to-end pixel-to-sky extraction from the fireball image
-is not implemented.
+and WCS-ingestion layer. For the target fireball image, a WCS was also
+solved **directly** from a metadata-stripped rendering of that image
+itself (rather than a separate reference photograph); its pixel grid has
+been validated to match that rendering's dimensions exactly, with no
+orientation transfer needed. Manual trail-endpoint selection and
+trajectory-analysis tooling now exist (`select-trail`, `analyze-trail`),
+but **no real endpoint selection has been made and no real trajectory
+result has been committed or is claimed**: real repeated clicking is a
+human step this repository does not perform for you. Any outputs a user
+generates from real private data remain under a git-ignored `results/`
+directory until reviewed. The preliminary RA/Dec values used earlier in
+this README are an illustrative reference calculation, not a
+repository-derived result from the real fireball photograph.
 
 ## Scientific inference chain
 
@@ -136,11 +140,30 @@ stronger evidence than single-image geometry alone can.
   reference image (`ReferenceGridStatus`), and whether it may be
   transferred to a separately captured target image
   (`TargetTransferStatus`).
+- `meteortrace.correspondence` — validates a WCS against its own
+  Astrometry.net correspondence table (`corr.fits`): pixel-origin
+  convention, angular residual statistics, and field coverage. Residuals
+  are explicitly documented as in-sample solution diagnostics, not
+  independent calibration.
+- `meteortrace.selection` — an immutable, validated contract for a
+  repeated manual trail-endpoint selection, tied to a specific image and
+  WCS by SHA-256.
+- `meteortrace.interactive_selection` — the Matplotlib-driven click
+  collector behind `select-trail`, with a plain, monkeypatchable seam for
+  tests (no real clicks are ever fabricated).
+- `meteortrace.uncertainty` — empirical per-endpoint covariance and
+  deterministic, seeded Monte Carlo sampling, scoped strictly to
+  repeated-selection variability.
+- `meteortrace.trajectory` / `meteortrace.pipeline` — map a saved
+  selection through the WCS and explicit frame-to-ICRS conversion into
+  the existing spherical-geometry layer, propagate uncertainty, and
+  assemble `analyze-trail`'s outputs.
 
 Full conventions (units, orientation, numerical degeneracies, pixel
-spaces, WCS ingestion) are documented in
-[docs/coordinate_conventions.md](docs/coordinate_conventions.md) and
-[docs/input_provenance_and_wcs.md](docs/input_provenance_and_wcs.md).
+spaces, WCS ingestion, manual selection and trajectory analysis) are
+documented in [docs/coordinate_conventions.md](docs/coordinate_conventions.md),
+[docs/input_provenance_and_wcs.md](docs/input_provenance_and_wcs.md) and
+[docs/manual_selection_and_trajectory.md](docs/manual_selection_and_trajectory.md).
 
 ## Installation and tests
 
@@ -161,13 +184,31 @@ poetry run meteortrace audit-inputs \
   --output results/.../input_audit.json
 ```
 
+Collecting and analysing a real manual trail selection:
+
+```bash
+poetry run meteortrace select-trail \
+  --image data/private/.../solver.png --wcs data/private/.../wcs.fits \
+  --repeats 5 --output results/.../trail_selection.json
+
+poetry run meteortrace analyze-trail \
+  --image data/private/.../solver.png --wcs data/private/.../wcs.fits \
+  --correspondences data/private/.../corr.fits \
+  --selection results/.../trail_selection.json \
+  --radiant-name "Perseids (provisional)" \
+  --radiant-ra-deg 48.0 --radiant-dec-deg 58.0 --radiant-frame icrs \
+  --samples 10000 --seed 20260812 \
+  --output-dir results/.../analysis
+```
+
 ## Repository map
 
 ```
-src/meteortrace/       geometry, contracts, provenance, pixel/image/WCS ingestion, CLI
+src/meteortrace/       geometry, provenance, pixel/image/WCS ingestion, manual
+                       selection, uncertainty, trajectory analysis, CLI
 tests/unit/            unit tests
 tests/integration/     CLI/integration tests
-docs/                  coordinate conventions, input-provenance/WCS notes, (future) figures
+docs/                  conventions, input-provenance/WCS and manual-selection notes
 data/                  data-handling policy; no imagery is committed
 ```
 
@@ -181,18 +222,21 @@ data/                  data-handling policy; no imagery is committed
 - Numerical tolerances (e.g. for degeneracy detection) are documented in
   [docs/coordinate_conventions.md](docs/coordinate_conventions.md) rather
   than left implicit.
-- Formal propagated uncertainty (e.g. Monte Carlo over astrometric
-  solutions) is not implemented yet; see Roadmap.
+- Repeated-selection uncertainty is propagated via deterministic, seeded
+  Monte Carlo (`analyze-trail --seed`); it is reported separately from,
+  and never combined with, WCS residuals, radiant dispersion, or frame
+  systematics — see [docs/manual_selection_and_trajectory.md](docs/manual_selection_and_trajectory.md).
 
 ## Roadmap
 
-1. Measured image registration (or an independently solved WCS) so that
-   this WCS layer can be applied to a target image safely, and automated
-   pixel-trail extraction so that `ObservedTrail` instances can be
-   derived from real photographs instead of hand-entered coordinates.
-2. Brightness and colour proxies from processed image pixels.
-3. Monte Carlo uncertainty propagation through the full chain.
-4. Report generation.
+1. A structured, independently measured registration-result contract, so
+   a direct WCS can be safely transferred between distinct images.
+2. Automated pixel-trail extraction, so `ObservedTrail` instances can
+   eventually be derived without a manual click, once validated against
+   manual selection.
+3. Brightness and colour proxies from processed image pixels.
+4. Report generation covering the full chain end-to-end on a reviewed,
+   real selection.
 
 ## License and citation
 

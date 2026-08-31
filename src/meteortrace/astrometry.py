@@ -13,9 +13,13 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
+import astropy.units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates.baseframe import BaseCoordinateFrame
 from astropy.io import fits
 from astropy.io.fits import Header
 from astropy.wcs import WCS
+from astropy.wcs.utils import wcs_to_celestial_frame
 
 from meteortrace.contracts import CelestialCoordinate
 from meteortrace.pixels import PixelCoordinate, PixelSpace, require_space
@@ -27,6 +31,10 @@ class DimensionResolutionError(ValueError):
 
 class NonCelestialWcsError(ValueError):
     """Raised when a WCS solution has no celestial axes to convert against."""
+
+
+class FrameResolutionError(ValueError):
+    """Raised when a WCS's celestial reference frame cannot be resolved."""
 
 
 def _resolve_pixel_dimensions(
@@ -119,7 +127,10 @@ def load_wcs(path: Path) -> tuple[WCS, WcsSummary]:
     with fits.open(path, mode="readonly") as hdul:
         header = hdul[0].header.copy()
 
-    wcs = WCS(header)
+    # naxis=2 selects only the celestial pixel axes: some Astrometry.net
+    # products (e.g. new-image.fits) attach a 3rd, non-celestial colour-plane
+    # axis that WCSLIB cannot combine with a 2D SIP distortion model.
+    wcs = WCS(header, naxis=2)
     width, height, sources = _resolve_pixel_dimensions(header, wcs)
 
     cd_matrix = None
@@ -204,6 +215,36 @@ def roundtrip_pixel_error(wcs: WCS, point: PixelCoordinate) -> float:
     return math.hypot(back.x - point.x, back.y - point.y)
 
 
+def wcs_summaries_agree(a: WcsSummary, b: WcsSummary, tolerance: float = 1e-6) -> bool:
+    """Whether two `WcsSummary` instances describe the same solved WCS.
+
+    Compares dimensions, CTYPE, CRPIX, CRVAL, the CD matrix, header
+    RADESYS and EQUINOX. Used to check that two independently ingested
+    FITS products (e.g. a header-only `wcs.fits` and a pixel-bearing
+    `new-image.fits`) describe a consistent solution.
+    """
+    if (a.width, a.height, a.ctype, a.header_radesys, a.equinox) != (
+        b.width,
+        b.height,
+        b.ctype,
+        b.header_radesys,
+        b.equinox,
+    ):
+        return False
+    if any(abs(x - y) > tolerance for x, y in zip(a.crpix, b.crpix, strict=True)):
+        return False
+    if any(abs(x - y) > tolerance for x, y in zip(a.crval, b.crval, strict=True)):
+        return False
+    if (a.cd_matrix is None) != (b.cd_matrix is None):
+        return False
+    if a.cd_matrix is not None and b.cd_matrix is not None:
+        flat_a = [value for row in a.cd_matrix for value in row]
+        flat_b = [value for row in b.cd_matrix for value in row]
+        if any(abs(x - y) > tolerance for x, y in zip(flat_a, flat_b, strict=True)):
+            return False
+    return True
+
+
 def is_within_bounds(point: PixelCoordinate, width: int, height: int) -> bool:
     """Whether `point` falls within an image frame of `width` x `height`.
 
@@ -213,3 +254,81 @@ def is_within_bounds(point: PixelCoordinate, width: int, height: int) -> bool:
     convention, where pixel index ``0`` spans ``[-0.5, 0.5)``.
     """
     return -0.5 <= point.x <= width - 0.5 and -0.5 <= point.y <= height - 0.5
+
+
+@dataclass(frozen=True)
+class FrameResolution:
+    """The raw and Astropy-inferred celestial reference frame of a WCS.
+
+    `header_radesys` is frequently absent from Astrometry.net output; when
+    it is, Astropy infers a default frame from `header_equinox` alone
+    (e.g. FK5 for equinox 2000). This is recorded explicitly so a solution
+    is never silently labelled ICRS without justification.
+    """
+
+    header_radesys: str | None
+    header_equinox: float | None
+    frame_name: str
+    frame_equinox: float | None
+
+    def to_dict(self) -> dict:
+        return {
+            "header_radesys": self.header_radesys,
+            "header_equinox": self.header_equinox,
+            "frame_name": self.frame_name,
+            "frame_equinox": self.frame_equinox,
+        }
+
+
+def resolve_celestial_frame(
+    wcs: WCS, wcs_summary: WcsSummary
+) -> tuple[BaseCoordinateFrame, FrameResolution]:
+    """Resolve a WCS's celestial reference frame using Astropy's WCS machinery.
+
+    Returns both the live Astropy frame instance (for use in an actual
+    coordinate transform) and a JSON-serializable summary of the raw and
+    inferred frame metadata. `wcs_summary` supplies the *raw* header
+    ``RADESYS``/``EQUINOX`` (which may be absent), since Astropy's own
+    `wcs.wcs.radesys` already substitutes its inferred default and cannot
+    be used to detect absence.
+
+    Raises
+    ------
+    NonCelestialWcsError
+        If the WCS has no celestial axes.
+    FrameResolutionError
+        If Astropy cannot resolve a celestial frame from the WCS.
+    """
+    if not wcs.has_celestial:
+        raise NonCelestialWcsError("WCS solution has no celestial axes.")
+    try:
+        frame = wcs_to_celestial_frame(wcs)
+    except ValueError as exc:
+        raise FrameResolutionError(
+            f"Could not resolve a celestial frame from the WCS: {exc}"
+        ) from exc
+
+    frame_equinox = getattr(frame, "equinox", None)
+    resolution = FrameResolution(
+        header_radesys=wcs_summary.header_radesys,
+        header_equinox=wcs_summary.equinox,
+        frame_name=frame.name,
+        frame_equinox=(
+            float(frame_equinox.jyear) if frame_equinox is not None else None
+        ),
+    )
+    return frame, resolution
+
+
+def frame_coordinate_to_icrs(
+    ra_deg: float, dec_deg: float, frame: BaseCoordinateFrame
+) -> CelestialCoordinate:
+    """Explicitly transform a coordinate expressed in `frame` into ICRS.
+
+    `frame` should be the live Astropy frame returned by
+    `resolve_celestial_frame`; this performs an actual frame
+    transformation (e.g. FK5(J2000) -> ICRS), not a relabelling.
+    """
+    sky = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame=frame)
+    icrs = sky.transform_to("icrs")
+    return CelestialCoordinate(ra_deg=float(icrs.ra.deg), dec_deg=float(icrs.dec.deg))

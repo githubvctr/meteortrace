@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "meteortrace"
-version = "0.2.0"
+version = "0.3.0"
 description = "Reproducible geometry and astrometry tools for meteors photographed with consumer cameras."
 authors = ["Victor Barna"]
 license = "MIT"
@@ -14,6 +14,7 @@ numpy = "^2.0"
 astropy = "^7.0"
 pillow = "^10.4"
 pillow-heif = "^0.18"
+matplotlib = "^3.9"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3"

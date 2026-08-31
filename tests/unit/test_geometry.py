@@ -21,6 +21,7 @@ from meteortrace.geometry import (
     classify_radiant_alignment,
     closest_point_on_great_circle,
     great_circle_normal,
+    point_at_along_track_angle_deg,
     radiant_cross_track_separation_deg,
     signed_along_track_angle_deg,
     to_unit_vector,
@@ -203,3 +204,20 @@ def test_outputs_remain_finite_for_near_boundary_inputs() -> None:
     assert math.isfinite(closest.ra_deg)
     assert math.isfinite(closest.dec_deg)
     assert math.isfinite(signed_along_track_angle_deg(trail, closest))
+
+
+def test_point_at_along_track_angle_is_inverse_of_signed_along_track_angle() -> None:
+    trail = ObservedTrail(REFERENCE_START, REFERENCE_END)
+    length = trail_angular_length_deg(trail)
+
+    start_recovered = point_at_along_track_angle_deg(trail, 0.0)
+    assert start_recovered.ra_deg == pytest.approx(REFERENCE_START.ra_deg, abs=1e-6)
+    assert start_recovered.dec_deg == pytest.approx(REFERENCE_START.dec_deg, abs=1e-6)
+
+    end_recovered = point_at_along_track_angle_deg(trail, length)
+    assert end_recovered.ra_deg == pytest.approx(REFERENCE_END.ra_deg, abs=1e-6)
+    assert end_recovered.dec_deg == pytest.approx(REFERENCE_END.dec_deg, abs=1e-6)
+
+    for t in (0.0, length / 2, length):
+        point = point_at_along_track_angle_deg(trail, t)
+        assert signed_along_track_angle_deg(trail, point) == pytest.approx(t, abs=1e-6)

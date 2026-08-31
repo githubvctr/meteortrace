@@ -17,13 +17,14 @@ from meteortrace.geometry import (
     classify_radiant_alignment,
     closest_point_on_great_circle,
     great_circle_normal,
+    point_at_along_track_angle_deg,
     radiant_cross_track_separation_deg,
     signed_along_track_angle_deg,
     to_unit_vector,
     trail_angular_length_deg,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "__version__",
@@ -35,6 +36,7 @@ __all__ = [
     "classify_radiant_alignment",
     "closest_point_on_great_circle",
     "great_circle_normal",
+    "point_at_along_track_angle_deg",
     "radiant_cross_track_separation_deg",
     "signed_along_track_angle_deg",
     "to_unit_vector",

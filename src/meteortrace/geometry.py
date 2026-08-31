@@ -179,6 +179,26 @@ def signed_along_track_angle_deg(
     return float(np.degrees(np.arctan2(np.dot(v_point, e2), np.dot(v_point, e1))))
 
 
+def point_at_along_track_angle_deg(
+    trail: ObservedTrail, along_track_deg: float
+) -> CelestialCoordinate:
+    """Celestial coordinate at a signed along-track position on a trail's great circle.
+
+    The inverse of `signed_along_track_angle_deg`: zero returns `trail.start`,
+    and `trail_angular_length_deg(trail)` returns (approximately) `trail.end`.
+    Useful for sampling points along the observed segment or its
+    extensions for plotting.
+    """
+    normal = great_circle_normal(trail)
+    v_start = to_unit_vector(trail.start)
+    e1 = v_start
+    e2 = np.cross(normal, v_start)
+    e2 = e2 / np.linalg.norm(e2)
+    angle_rad = np.radians(along_track_deg)
+    point_vector = np.cos(angle_rad) * e1 + np.sin(angle_rad) * e2
+    return _unit_vector_to_coordinate(point_vector)
+
+
 def classify_radiant_alignment(
     trail: ObservedTrail, radiant: ShowerRadiant
 ) -> RadiantAlignment:

@@ -98,3 +98,70 @@ than hypothesised. It also exposed a bare `registration_evidence`
 Boolean capable of producing a direct-match conclusion without
 structured evidence. Both are corrected above; no trajectory, image
 content comparison, or registration was implemented as part of the fix.
+
+## TASK_003 — Manual selection and trajectory analysis
+
+**Objective:** Validate a *direct* WCS (solved from the fireball image
+itself) against its own correspondence table, and implement a manual
+repeated-endpoint-selection and trajectory-analysis pipeline built on it,
+without inferring real endpoints or fabricating a real result.
+
+**Delivered:** `correspondence.py` (corr.fits schema parsing, pixel-origin
+determination via Astrometry.net's own field_ra/field_dec, robust
+residual statistics, field coverage), frame-resolution additions to
+`astrometry.py` (`resolve_celestial_frame`, `frame_coordinate_to_icrs`,
+`wcs_summaries_agree`), `selection.py` (immutable, hash-tied manual
+selection contract), `interactive_selection.py` (Matplotlib click
+collector with a monkeypatchable seam and a non-interactive-backend
+guard), `uncertainty.py` (per-endpoint covariance, deterministic seeded
+Monte Carlo), `trajectory.py` + `pipeline.py` (mean and Monte
+Carlo-propagated trajectory geometry against a declared provisional
+radiant), `outputs.py` (analysis.json/trajectory.csv/two figures/report.md/
+provenance.json), and `select-trail`/`analyze-trail` CLI commands.
+
+**Validation:** 139 tests passed (83 pre-existing unchanged, 56 new);
+coverage 96% overall, all new modules ≥85% (most ≥97%). Real WCS
+validation run against the actual direct PNG/wcs.fits/corr.fits products.
+
+**Key decisions:**
+- `field_x`/`field_y`'s pixel-origin convention is established by
+  reproducing Astrometry.net's own `field_ra`/`field_dec` (near-exact
+  match for the correct convention, ~arcsecond-scale mismatch for the
+  wrong one) rather than compared against the noisier catalogue position.
+- WCS correspondence residuals are always reported as in-sample solution
+  diagnostics, never as independent astrometric calibration.
+- Manual selection is restricted to the `WCS_SOLVED` pixel space of the
+  direct solver image only; no other pixel space is accepted.
+- Repeated-selection Monte Carlo uses the full 2x2 empirical covariance
+  (never assumes independent x/y) and is never combined numerically with
+  WCS residuals, radiant dispersion, or frame systematics.
+- A hang bug was found and fixed during testing: mocking
+  `matplotlib.pyplot` via `sys.modules` alone silently fails to intercept
+  `import matplotlib.pyplot as plt` once the real module has already been
+  imported elsewhere (Python's `IMPORT_FROM` resolves via the parent
+  package's attribute, not only `sys.modules`); fixed by patching both,
+  and by adding an explicit non-interactive-backend guard plus a finite
+  `ginput` timeout so a misconfigured environment fails fast instead of
+  hanging indefinitely.
+
+**Real direct-WCS validation result (non-sensitive):** the direct WCS's
+pixel grid (3024×4032) matches the solver PNG's dimensions exactly — no
+orientation transform or registration is needed for this pair, unlike
+the transferred WCS in TASK_002. `new-image.fits`'s embedded WCS agrees
+with `wcs.fits` exactly. The pixel-origin convention for `corr.fits` is
+unambiguously FITS 1-based (established to ~1 microarcsecond against
+Astrometry.net's own recorded positions). Field coverage is excellent
+(~99% x, ~98% y). However, the 210 correspondences show a **median
+angular residual of 75.0 arcsec** against their matched catalogue
+positions (p68 112.2″, p95 489.5″, max 854.0″, RMS 224.4″) — anomalously
+large for a typical sub-arcsecond Astrometry.net solve. This is flagged
+as a warning in every validation report. RADESYS is absent from the
+header (EQUINOX=2000.0 present); Astropy infers FK5(J2000), not ICRS.
+
+**Remaining human selection gate:** because of the large internal
+residuals above, this WCS's external astrometric accuracy is unverified
+beyond self-consistency. No real endpoint selection was performed and no
+real trajectory result exists in this repository: a human must run
+`select-trail` and review the resulting `analyze-trail` report,
+including its WCS-residual warning, before treating any derived
+trajectory as trustworthy.
