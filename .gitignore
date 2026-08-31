@@ -1,0 +1,28 @@
+# Private and generated data
+data/private/
+data/raw/
+results/
+
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*.pyd
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Poetry / build artifacts
+.venv/
+dist/
+build/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# macOS metadata
+.DS_Store
